@@ -10,7 +10,10 @@ export type StoryAsset = {
   post_id: number;
   post_type: string;
   channel: string;
+  /** First image — kept for backward compat with older plugin versions. */
   image_url: string;
+  /** Ordered list of all images for multi-segment Story posting. */
+  image_urls?: string[];
   story_text: string;
   story_link: string;
   planned_for: string;
@@ -21,14 +24,9 @@ export type StoryAsset = {
  * Allow only hostnames that look like real domains. Prevents this PWA from
  * being abused as a generic proxy — someone can't craft a URL that points us
  * at internal IPs, file:// URLs, or arbitrary ports.
- *
- * If you want stricter scoping, change this to e.g. `host.endsWith('.contentbakery.at')`
- * once all customer sites move under that umbrella.
  */
 function isValidHost(host: string): boolean {
   if (!host || host.length > 253) return false;
-  // RFC 1123 hostname: dot-separated labels, alphanumeric + hyphens.
-  // Requires at least one dot so localhost / single-label internal hosts can't sneak through.
   return /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(host);
 }
 
@@ -46,7 +44,6 @@ export default async function StoryPage({
     `https://${host}/wp-json/content-maschine/v1/story/${token}`,
     {
       cache: 'no-store',
-      // 8s timeout — WP REST is usually <500ms; if it's slow something's wrong.
       signal: AbortSignal.timeout(8000),
     }
   );
@@ -68,5 +65,15 @@ export default async function StoryPage({
   }
 
   const data = (await res.json()) as StoryAsset;
-  return <StoryClient data={data} />;
+
+  // Normalize: older plugin versions only sent image_url; newer ones send image_urls.
+  // Always pass an array down so the client doesn't branch.
+  const images =
+    Array.isArray(data.image_urls) && data.image_urls.length > 0
+      ? data.image_urls
+      : data.image_url
+      ? [data.image_url]
+      : [];
+
+  return <StoryClient data={data} images={images} />;
 }

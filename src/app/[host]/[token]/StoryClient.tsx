@@ -4,8 +4,25 @@ import { useState } from 'react';
 import type { StoryAsset } from './page';
 
 /**
+ * Build the same-origin proxy URL for a remote image. Avoids CORS so the
+ * browser can fetch the image as a Blob → File → Web Share or download.
+ */
+function proxiedImageUrl(rawUrl: string, postId: number, index: number): string {
+  // Try to keep a meaningful extension so save-to-Photos lands as .jpg/.png.
+  let ext = 'jpg';
+  try {
+    const u = new URL(rawUrl);
+    const m = u.pathname.match(/\.(jpg|jpeg|png|webp|heic|gif)$/i);
+    if (m) ext = m[1].toLowerCase();
+  } catch {
+    /* fall through with default */
+  }
+  const filename = `story-${postId}-${index + 1}.${ext}`;
+  return `/api/img?u=${encodeURIComponent(rawUrl)}&n=${encodeURIComponent(filename)}`;
+}
+
+/**
  * Tiny copy-to-clipboard button with a 1.8s "Kopiert" confirmation flash.
- * Returns null when there's nothing to copy so the surrounding layout stays clean.
  */
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -29,15 +46,20 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 }
 
 /**
- * Save the story image to the user's device.
- * - On iOS Safari, navigator.share with a File opens the native share sheet
- *   which lets the user "Save Image" → Photos. That's the path Instagram needs
- *   the image to be on for Story posting.
- * - On everything else, falls back to a regular <a download>.
+ * Save / share one story image. We always go through the same-origin proxy so
+ * the fetch isn't blocked by WP's missing CORS headers.
+ *
+ * On iOS Safari, navigator.share with a File opens the native share sheet —
+ * the user can pick "In Fotos sichern" (saves to Photos) or directly tap
+ * "Instagram → Story hinzufügen" if Instagram is installed.
+ *
+ * On Android Chrome, the Web Share API behaves similarly when files are supported;
+ * otherwise we fall back to a plain anchor download (saves to /Download).
  */
-async function downloadImage(url: string, filename = 'story.jpg') {
+async function saveOrShareImage(proxiedUrl: string, filename: string) {
   try {
-    const res = await fetch(url);
+    const res = await fetch(proxiedUrl);
+    if (!res.ok) throw new Error(`Proxy returned ${res.status}`);
     const blob = await res.blob();
     const file = new File([blob], filename, { type: blob.type });
 
@@ -58,11 +80,17 @@ async function downloadImage(url: string, filename = 'story.jpg') {
     URL.revokeObjectURL(a.href);
   } catch (e) {
     console.error(e);
-    alert('Download fehlgeschlagen.');
+    alert('Speichern fehlgeschlagen. Bitte halte das Bild gedrückt und wähle "Bild sichern".');
   }
 }
 
-export default function StoryClient({ data }: { data: StoryAsset }) {
+export default function StoryClient({
+  data,
+  images,
+}: {
+  data: StoryAsset;
+  images: string[];
+}) {
   const plannedDisplay = data.planned_for
     ? new Date(data.planned_for).toLocaleString('de-DE')
     : '';
@@ -75,26 +103,42 @@ export default function StoryClient({ data }: { data: StoryAsset }) {
         {plannedDisplay && (
           <p className="text-xs text-neutral-500 mt-1">Geplant für {plannedDisplay}</p>
         )}
+        {images.length > 1 && (
+          <p className="text-xs text-neutral-500 mt-1">
+            {images.length} Bilder — speichere alle und füge sie nacheinander deiner Story hinzu.
+          </p>
+        )}
       </header>
 
-      <section className="rounded-2xl overflow-hidden bg-white shadow-sm border border-neutral-200">
-        {/* Story aspect = 9:16. We keep it via CSS aspect-ratio so the layout
-            stays predictable even if the image takes a moment to load. */}
-        <img
-          src={data.image_url}
-          alt="Story"
-          className="w-full aspect-[9/16] object-cover"
-        />
-      </section>
-
-      <div className="mt-3">
-        <button
-          onClick={() => downloadImage(data.image_url, `story-${data.post_id}.jpg`)}
-          className="w-full px-4 py-3 rounded-xl bg-neutral-900 text-white font-medium active:scale-95 transition"
-        >
-          Bild speichern
-        </button>
-      </div>
+      {images.map((rawUrl, idx) => {
+        const proxied = proxiedImageUrl(rawUrl, data.post_id, idx);
+        const filename = proxied.split('n=')[1]
+          ? decodeURIComponent(proxied.split('n=')[1])
+          : `story-${data.post_id}-${idx + 1}.jpg`;
+        return (
+          <section
+            key={rawUrl}
+            className="mt-4 rounded-2xl overflow-hidden bg-white shadow-sm border border-neutral-200"
+          >
+            {images.length > 1 && (
+              <div className="px-3 py-2 text-xs font-medium text-neutral-500 border-b border-neutral-100">
+                Bild {idx + 1} von {images.length}
+              </div>
+            )}
+            <img
+              src={proxied}
+              alt={`Story ${idx + 1}`}
+              className="w-full aspect-[9/16] object-cover bg-neutral-100"
+            />
+            <button
+              onClick={() => saveOrShareImage(proxied, filename)}
+              className="w-full px-4 py-3 bg-neutral-900 text-white font-medium active:scale-95 transition"
+            >
+              {images.length > 1 ? `Bild ${idx + 1} speichern` : 'Bild speichern'}
+            </button>
+          </section>
+        );
+      })}
 
       {data.story_text && (
         <section className="mt-6 p-4 rounded-2xl bg-white border border-neutral-200">
@@ -117,9 +161,7 @@ export default function StoryClient({ data }: { data: StoryAsset }) {
       )}
 
       {/* `instagram://story-camera` opens the IG app directly into the Story
-          composer on both iOS and Android (when the app is installed). If the
-          app isn't installed the link is a no-op — the instructions below
-          still let the user complete the flow manually. */}
+          composer on both iOS and Android (when the app is installed). */}
       <a
         href="instagram://story-camera"
         className="mt-8 block w-full text-center px-6 py-4 rounded-2xl text-white font-semibold text-lg shadow-md active:scale-95 transition"
@@ -132,9 +174,13 @@ export default function StoryClient({ data }: { data: StoryAsset }) {
       </a>
 
       <ol className="mt-6 text-sm text-neutral-600 list-decimal pl-5 space-y-1">
-        <li>Bild speichern</li>
+        <li>
+          {images.length > 1
+            ? 'Alle Bilder nacheinander speichern'
+            : 'Bild speichern'}
+        </li>
         <li>Story-Text und Link kopieren</li>
-        <li>Instagram öffnen → Story → gespeichertes Bild auswählen</li>
+        <li>Instagram öffnen → Story → gespeicherte Bilder auswählen</li>
         <li>Text einfügen, Link-Sticker mit dem kopierten Link einsetzen</li>
       </ol>
     </main>

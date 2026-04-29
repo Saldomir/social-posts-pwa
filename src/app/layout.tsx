@@ -11,7 +11,8 @@ export const metadata: Metadata = {
     title: 'Social Posts',
   },
   icons: {
-    apple: '/apple-touch-icon.png',
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/icon.svg' }],
   },
 };
 
@@ -20,6 +21,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // Light only — see globals.css for the rationale.
+  colorScheme: 'light',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
