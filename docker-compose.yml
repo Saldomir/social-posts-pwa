@@ -1,0 +1,11 @@
+services:
+  social-posts-pwa:
+    build: .
+    container_name: social-posts-pwa
+    restart: unless-stopped
+    # Bind to localhost only — host nginx terminates TLS and proxies in.
+    # Same pattern as your postiz / n8n / seatable / temporal-ui containers.
+    ports:
+      - "127.0.0.1:3000:3000"
+    # No env vars currently — multi-tenant host comes from the URL.
+    # Add things here as needed (host allowlist, analytics IDs, …).
