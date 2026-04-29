@@ -14,6 +14,14 @@ export const metadata: Metadata = {
     icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/icon.svg' }],
   },
+  // Facebook App ID — required by Instagram's Stories Share Intent
+  // (instagram-stories://share?source_application=<APP_ID>) when we wrap the
+  // PWA in a native shell (Capacitor / TWA) later. Web alone can't fire that
+  // intent because it needs UIPasteboard / Android Intent access, but having
+  // the meta in the head is the right call for graph crawlers and prep work.
+  other: {
+    'fb:app_id': '1885902222063683',
+  },
 };
 
 export const viewport: Viewport = {

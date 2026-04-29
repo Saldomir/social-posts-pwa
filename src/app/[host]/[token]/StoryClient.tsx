@@ -133,14 +133,56 @@ export default function StoryClient({
         )}
       </header>
 
+      {/* Instructions live above the assets so first-time users learn the flow
+          before they start tapping. The list is short and sits in a soft purple
+          card so it's clearly a guide, not content to interact with. */}
+      <section className="mt-2 p-4 rounded-2xl bg-purple-50 border border-purple-100">
+        <h2 className="text-sm font-semibold text-purple-900 mb-2">So geht&apos;s</h2>
+        {images.length > 1 ? (
+          <ol className="text-sm text-purple-900/90 list-decimal pl-5 space-y-1.5">
+            <li>Alle Bilder unten einzeln speichern</li>
+            <li>
+              <strong>Instagram-App öffnen</strong> → Story-Kamera → Galerie →
+              gespeicherte Bilder nacheinander auswählen
+            </li>
+            <li>
+              Pro Story-Segment auf diese Seite zurückkommen, <strong>Story-Text</strong>{' '}
+              und dann <strong>Link</strong> kopieren und in Instagram einfügen
+            </li>
+            <li>Link-Sticker einsetzen → Story posten 🎉</li>
+          </ol>
+        ) : (
+          <ol className="text-sm text-purple-900/90 list-decimal pl-5 space-y-1.5">
+            <li>
+              <strong>Bild in Instagram öffnen</strong> antippen, dann{' '}
+              <strong>Instagram Stories</strong> wählen.
+              <br />
+              <span className="text-purple-900/70 text-xs">
+                Falls das Icon nicht sichtbar ist, zuerst auf <strong>„Mehr&quot;</strong> tippen.
+              </span>
+            </li>
+            <li>
+              Auf diese Seite zurückkommen, <strong>Story-Text kopieren</strong>{' '}
+              → in Instagram als Textelement einfügen
+            </li>
+            <li>
+              Erneut zurückkommen, <strong>Link kopieren</strong> → in Instagram
+              Link-Sticker einsetzen
+            </li>
+            <li>Story posten 🎉</li>
+          </ol>
+        )}
+      </section>
+
       {images.map((rawUrl, idx) => {
         const { url: proxied, filename } = proxiedImageUrl(rawUrl, data.post_id, idx);
+        const isSingle = images.length === 1;
         return (
           <section
             key={rawUrl}
             className="mt-4 rounded-2xl overflow-hidden bg-white shadow-sm border border-neutral-200"
           >
-            {images.length > 1 && (
+            {!isSingle && (
               <div className="px-3 py-2 text-xs font-medium text-neutral-500 border-b border-neutral-100">
                 Bild {idx + 1} von {images.length}
               </div>
@@ -151,20 +193,28 @@ export default function StoryClient({
               className="w-full aspect-[9/16] object-cover bg-neutral-100"
             />
             <div className="p-3 space-y-2">
-              {/* Primary action: native share sheet → user picks Instagram → "Story hinzufügen" */}
-              <button
-                onClick={() => shareImage(proxied, filename)}
-                className="w-full px-4 py-3 rounded-xl text-white font-semibold shadow-sm active:scale-95 transition"
-                style={{ background: igGradient }}
-              >
-                Bild in Instagram öffnen
-              </button>
-              {/* Secondary action: just save to disk / Photos */}
+              {/* For a single image we offer the share-sheet path as primary —
+                  it's the fewest taps to get to a Story. For multi-image we
+                  hide it: each share opens IG fresh and would discard the
+                  previous segment. Multi-image flow is "save all → open IG → pick all from camera roll". */}
+              {isSingle && (
+                <button
+                  onClick={() => shareImage(proxied, filename)}
+                  className="w-full px-4 py-3 rounded-xl text-white font-semibold shadow-sm active:scale-95 transition"
+                  style={{ background: igGradient }}
+                >
+                  Bild in Instagram öffnen
+                </button>
+              )}
               <button
                 onClick={() => downloadImage(proxied, filename)}
-                className="w-full px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-sm font-medium active:scale-95 transition"
+                className={
+                  isSingle
+                    ? 'w-full px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-sm font-medium active:scale-95 transition'
+                    : 'w-full px-4 py-3 rounded-xl bg-neutral-900 text-white font-medium active:scale-95 transition'
+                }
               >
-                Bild speichern
+                {isSingle ? 'Bild speichern' : `Bild ${idx + 1} speichern`}
               </button>
             </div>
           </section>
@@ -191,25 +241,26 @@ export default function StoryClient({
         </section>
       )}
 
-      {/* "Instagram-App öffnen" — fallback button that just deep-links into the
-          IG Story camera. Useful if the user already saved everything via
-          "Bild speichern" and just needs to hop over to Instagram. */}
+      {/* The bottom "Instagram öffnen" button. For a single image the share-sheet
+          button above is the primary path, so this is muted (just a hop into the
+          app). For multi-image the user has to pick all images from the camera
+          roll inside IG anyway, so this *is* the primary CTA — gradient. */}
       <a
         href="instagram://story-camera"
-        className="mt-8 block w-full text-center px-6 py-4 rounded-2xl bg-neutral-900 text-white font-medium active:scale-95 transition"
+        className={
+          images.length > 1
+            ? 'mt-8 block w-full text-center px-6 py-4 rounded-2xl text-white font-semibold text-lg shadow-md active:scale-95 transition'
+            : 'mt-8 block w-full text-center px-6 py-4 rounded-2xl bg-neutral-900 text-white font-medium active:scale-95 transition'
+        }
+        style={
+          images.length > 1
+            ? { background: igGradient }
+            : undefined
+        }
       >
-        Instagram-App öffnen
+        {images.length > 1 ? 'Instagram öffnen' : 'Instagram-App öffnen'}
       </a>
 
-      <ol className="mt-6 text-sm text-neutral-600 list-decimal pl-5 space-y-1">
-        <li>Story-Text und Link kopieren</li>
-        <li>
-          {images.length > 1
-            ? 'Pro Bild "Bild in Instagram öffnen" und Story-Segment posten'
-            : '"Bild in Instagram öffnen" → Story hinzufügen'}
-        </li>
-        <li>Text einfügen, Link-Sticker mit dem kopierten Link einsetzen</li>
-      </ol>
     </main>
   );
 }
